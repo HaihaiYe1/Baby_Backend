@@ -23,7 +23,7 @@ class BabyAgent:
         db: Session,
         user_id: int,
         openai_api_key: Optional[str] = None,
-        model_name: str = "gpt-4o",
+        model_name: str = "MiMo-V2.5-Pro",
         use_agent_mode: bool = True
     ):
         """
@@ -48,14 +48,18 @@ class BabyAgent:
         
         # 初始化LLM（如果使用Agent模式）
         if use_agent_mode:
-            api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
+            # 小米MiMo API配置
+            api_key = openai_api_key or os.getenv("MIMO_API_KEY", "sk-cky9npvg2kk9c2m8iv7n0ycgnxggfqq73nmvt7sdx9efouwj")
+            base_url = os.getenv("MIMO_BASE_URL", "https://api.mimo.xiaomi.com/v1")
+            
             if not api_key:
-                print("警告: 未设置OPENAI_API_KEY，将使用传统模式")
+                print("警告: 未设置MIMO_API_KEY，将使用传统模式")
                 self.use_agent_mode = False
             else:
                 self.llm = ChatOpenAI(
                     model=model_name,
                     api_key=api_key,
+                    base_url=base_url,
                     temperature=0.1,  # 低温度，更确定性的响应
                     max_tokens=1024
                 )

@@ -28,5 +28,5 @@ sentence-transformers==2.3.1
 pypdf2==3.0.1
 python-docx==1.1.0
 
-# MQTT（阶段四预留）
-# paho-mqtt==1.6.1
+# MQTT（阶段四）
+paho-mqtt==1.6.1

@@ -14,6 +14,7 @@ from .tools import DetectionTool, NotificationTool, DeviceTool
 from .prompts import AgentPrompts
 from .memory import ConversationMemory
 from app.rag.advisor import parenting_advisor
+from app.tools.smart_home import SpeakerTool, LightTool, SceneTool
 
 
 class BabyAgent:
@@ -74,7 +75,10 @@ class BabyAgent:
         return [
             DetectionTool(),
             NotificationTool(db=self.db),
-            DeviceTool(db=self.db)
+            DeviceTool(db=self.db),
+            SpeakerTool(),
+            LightTool(),
+            SceneTool()
         ]
     
     def _create_agent_executor(self) -> AgentExecutor:

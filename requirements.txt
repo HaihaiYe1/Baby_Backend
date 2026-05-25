@@ -1,0 +1,30 @@
+fastapi==0.109.0
+uvicorn==0.27.0
+sqlalchemy==2.0.25
+pymysql==1.1.0
+pydantic==2.5.3
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.6
+websockets==12.0
+opencv-python-headless==4.9.0.80
+ultralytics==8.1.0
+mediapipe==0.10.9
+torch==2.1.2
+numpy==1.26.3
+filterpy==1.4.5
+scikit-image==0.22.0
+httpx==0.26.0
+
+# LangChain Agent依赖
+langchain==0.1.4
+langchain-openai==0.0.5
+langchain-community==0.0.16
+openai==1.10.0
+
+# 向量数据库（阶段三预留）
+# chromadb==0.4.22
+# sentence-transformers==2.3.1
+
+# MQTT（阶段四预留）
+# paho-mqtt==1.6.1

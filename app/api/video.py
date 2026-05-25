@@ -7,12 +7,16 @@ from app.utils.video_utils import get_video_capture, read_frame
 import time
 import os
 import threading
+import base64
+import cv2
 
 from app.schemas import NotificationCreate
 from app.crud import create_notification
 from app.api.websocket import send_alert_message  # ✅ 新增
 from app.utils.security import get_current_user  # ✅ 引入当前用户依赖
 from app.models import User
+from app.agent import BabyAgent
+from app.agent.baby_agent import agent_manager
 
 router = APIRouter()
 multi_detector = MultiDetector()
@@ -106,6 +110,109 @@ def stop_detect(
     del STOP_FLAGS[device_id]
 
     return {"message": f"已停止设备 {device_id} 的检测"}
+
+
+# Agent模式检测接口
+@router.post("/agent-detect")
+async def agent_detect(
+        device_id: int = Query(..., description="设备 ID"),
+        max_frames: int = Query(5, description="最多处理多少帧"),
+        use_agent: bool = Query(True, description="是否使用Agent模式"),
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    """
+    使用AI Agent进行视频分析
+    """
+    # 获取设备信息
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device or not device.rtsp_url:
+        raise HTTPException(status_code=404, detail="设备不存在或未配置 RTSP 流地址")
+    
+    # 获取或创建Agent
+    agent = agent_manager.get_or_create_agent(
+        db=db,
+        user_id=current_user.id,
+        use_agent_mode=use_agent
+    )
+    
+    # 打开视频流
+    cap = get_video_capture(device.rtsp_url)
+    if not cap.isOpened():
+        raise HTTPException(status_code=500, detail="无法打开视频流")
+    
+    results = []
+    count = 0
+    
+    try:
+        while count < max_frames:
+            frame = read_frame(cap)
+            if frame is None:
+                break
+            
+            # 将帧转换为Base64
+            _, buffer = cv2.imencode('.jpg', frame)
+            frame_base64 = base64.b64encode(buffer).decode('utf-8')
+            
+            # 使用Agent分析
+            analysis_result = await agent.analyze_frame(
+                frame_data=frame_base64,
+                device_id=device_id,
+                context=f"设备名称: {device.name}"
+            )
+            
+            results.append({
+                "frame_index": count,
+                "timestamp": time.time(),
+                "analysis": analysis_result
+            })
+            
+            count += 1
+            time.sleep(0.1)
+    
+    finally:
+        cap.release()
+    
+    return {
+        "device_name": device.name,
+        "video_source": device.rtsp_url,
+        "frames_processed": count,
+        "agent_mode": use_agent,
+        "results": results,
+        "agent_status": agent.get_status()
+    }
+
+
+# 获取Agent状态
+@router.get("/agent-status")
+async def get_agent_status(
+        current_user: User = Depends(get_current_user)
+):
+    """
+    获取当前用户的Agent状态
+    """
+    agent = agent_manager.get_or_create_agent(
+        db=None,  # 不需要数据库
+        user_id=current_user.id
+    )
+    return agent.get_status()
+
+
+# 更新Agent偏好设置
+@router.put("/agent-preferences")
+async def update_agent_preferences(
+        preferences: dict,
+        current_user: User = Depends(get_current_user)
+):
+    """
+    更新Agent的用户偏好设置
+    """
+    agent = agent_manager.get_or_create_agent(
+        db=None,
+        user_id=current_user.id
+    )
+    agent.update_preferences(preferences)
+    return {"message": "偏好设置已更新", "preferences": preferences}
 
 
 # 没有用的接口，还不知道怎么用

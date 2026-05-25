@@ -17,6 +17,7 @@ from app.utils.security import get_current_user  # ✅ 引入当前用户依赖
 from app.models import User
 from app.agent import BabyAgent
 from app.agent.baby_agent import agent_manager
+from app.services.scene_analyzer import scene_analyzer
 
 router = APIRouter()
 multi_detector = MultiDetector()
@@ -316,4 +317,109 @@ async def detect_video_source(
         "video_source": source_info,
         "frames_processed": count,
         "results": results
+    }
+
+
+# VLM增强检测接口
+@router.post("/vlm-detect")
+async def vlm_detect(
+        device_id: int = Query(..., description="设备 ID"),
+        max_frames: int = Query(3, description="最多处理多少帧"),
+        use_vlm: bool = Query(True, description="是否使用VLM分析"),
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    """
+    使用VLM增强的视频分析（双层感知）
+    """
+    # 获取设备信息
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device or not device.rtsp_url:
+        raise HTTPException(status_code=404, detail="设备不存在或未配置 RTSP 流地址")
+    
+    # 配置场景分析器
+    scene_analyzer.enable_vlm(use_vlm)
+    
+    # 打开视频流
+    cap = get_video_capture(device.rtsp_url)
+    if not cap.isOpened():
+        raise HTTPException(status_code=500, detail="无法打开视频流")
+    
+    results = []
+    count = 0
+    
+    try:
+        while count < max_frames:
+            frame = read_frame(cap)
+            if frame is None:
+                break
+            
+            # 使用场景分析器分析帧
+            analysis = await scene_analyzer.analyze_frame(
+                frame=frame,
+                frame_id=count,
+                device_id=device_id
+            )
+            
+            # 检查是否需要发送通知
+            final_assessment = analysis.get("final_assessment", {})
+            if final_assessment.get("should_notify", False):
+                # 发送通知
+                notification_message = final_assessment.get("notification_message", "检测到风险")
+                overall_level = final_assessment.get("overall_level", "warning")
+                
+                # 创建通知
+                notification_data = NotificationCreate(
+                    device_id=device_id,
+                    level=overall_level,
+                    message=notification_message
+                )
+                
+                try:
+                    notification = create_notification(
+                        db, notification_data,
+                        user_id=current_user.id
+                    )
+                    
+                    # WebSocket推送
+                    await send_alert_message(
+                        level=overall_level,
+                        message=notification_message,
+                        alert_id=notification.id
+                    )
+                    
+                    analysis["notification_sent"] = True
+                    analysis["notification_id"] = notification.id
+                    
+                except Exception as e:
+                    print(f"发送通知失败: {e}")
+                    analysis["notification_sent"] = False
+                    analysis["notification_error"] = str(e)
+            
+            results.append({
+                "frame_index": count,
+                "timestamp": time.time(),
+                "analysis": analysis
+            })
+            
+            count += 1
+            time.sleep(0.1)
+    
+    finally:
+        cap.release()
+    
+    # 生成摘要
+    summary = {
+        "total_frames": count,
+        "notifications_sent": sum(1 for r in results if r.get("analysis", {}).get("notification_sent", False)),
+        "risk_levels": [r.get("analysis", {}).get("final_assessment", {}).get("overall_level", "safe") for r in results]
+    }
+    
+    return {
+        "device_name": device.name,
+        "video_source": device.rtsp_url,
+        "frames_processed": count,
+        "use_vlm": use_vlm,
+        "results": results,
+        "summary": summary
     }

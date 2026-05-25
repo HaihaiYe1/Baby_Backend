@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware  # 导入 CORS
-from .api import auth, device, notification, websocket, video, timing, agent, rag, smart_home
+from .api import auth, device, notification, websocket, video, timing, agent, rag, smart_home, websocket_stream, monitoring
 from .utils.database import Base, engine
+from .services.websocket_manager import ws_manager
 
 # tags是用于自动文档（Swagger UI）的分组显示
 
@@ -9,6 +10,20 @@ from .utils.database import Base, engine
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
+
+# 启动事件
+@app.on_event("startup")
+async def startup_event():
+    """应用启动时执行"""
+    await ws_manager.start()
+    print("应用启动完成")
+
+# 关闭事件
+@app.on_event("shutdown")
+async def shutdown_event():
+    """应用关闭时执行"""
+    await ws_manager.stop()
+    print("应用关闭完成")
 
 # ========== 先添加 CORS 中间件（必须在路由之前！）==========
 app.add_middleware(
@@ -34,3 +49,7 @@ app.include_router(agent.router, prefix="/agent", tags=["Agent"])
 app.include_router(rag.router, prefix="/rag", tags=["RAG"])
 # 智能家居控制接口
 app.include_router(smart_home.router, prefix="/smart-home", tags=["SmartHome"])
+# WebSocket流接口（视频流、音频流、语音对讲）
+app.include_router(websocket_stream.router, prefix="/ws/stream", tags=["WebSocketStream"])
+# 性能监控接口
+app.include_router(monitoring.router, prefix="/monitoring", tags=["Monitoring"])

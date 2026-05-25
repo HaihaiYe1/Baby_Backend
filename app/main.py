@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware  # 导入 CORS
-from .api import auth, device, notification, websocket, video, timing, agent
+from .api import auth, device, notification, websocket, video, timing, agent, rag
 from .utils.database import Base, engine
 
 # tags是用于自动文档（Swagger UI）的分组显示
@@ -30,3 +30,5 @@ app.include_router(video.router, prefix="/video", tags=["Video"])
 app.include_router(timing.router, prefix="/timing", tags=["Timing"])
 # Agent相关接口
 app.include_router(agent.router, prefix="/agent", tags=["Agent"])
+# RAG育儿知识库接口
+app.include_router(rag.router, prefix="/rag", tags=["RAG"])

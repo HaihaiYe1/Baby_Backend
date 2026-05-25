@@ -22,9 +22,11 @@ langchain-openai==0.0.5
 langchain-community==0.0.16
 openai==1.10.0
 
-# 向量数据库（阶段三预留）
-# chromadb==0.4.22
-# sentence-transformers==2.3.1
+# 向量数据库（阶段三）
+chromadb==0.4.22
+sentence-transformers==2.3.1
+pypdf2==3.0.1
+python-docx==1.1.0
 
 # MQTT（阶段四预留）
 # paho-mqtt==1.6.1

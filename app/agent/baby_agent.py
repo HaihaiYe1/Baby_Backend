@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from .tools import DetectionTool, NotificationTool, DeviceTool
 from .prompts import AgentPrompts
 from .memory import ConversationMemory
+from app.rag.advisor import parenting_advisor
 
 
 class BabyAgent:
@@ -45,6 +46,9 @@ class BabyAgent:
         
         # 初始化工具
         self.tools = self._initialize_tools()
+        
+        # 初始化育儿顾问
+        self.advisor = parenting_advisor
         
         # 初始化LLM（如果使用Agent模式）
         if use_agent_mode:

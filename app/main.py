@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware  # 导入 CORS
 from .api import auth, device, notification, websocket, video, timing
 from .utils.database import Base, engine
 
@@ -9,7 +10,17 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-# 注册路由
+# ========== 先添加 CORS 中间件（必须在路由之前！）==========
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 允许所有来源，生产环境建议改为具体域名
+    allow_credentials=True,
+    allow_methods=["*"],  # 允许所有方法，包括 OPTIONS
+    allow_headers=["*"],  # 允许所有请求头
+)
+# =========================================================
+
+# 然后再注册路由
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(device.router, prefix="/device", tags=["Device"])
 app.include_router(notification.router, prefix="/notification", tags=["Notification"])

@@ -6,11 +6,12 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from app.models import User
 from app.utils.database import get_db
+from app.config import settings
 
 # JWT 配置
-SECRET_KEY = "171008"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60*24*7  # 修改为 1 个月
+SECRET_KEY = settings.SECRET_KEY
+ALGORITHM = settings.ALGORITHM
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 
 # 创建密码哈希上下文
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -39,7 +40,6 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
 
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    print(f"Received token: {token}")  # 打印 token 看是否正确传递
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid authentication credentials",
@@ -48,18 +48,14 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        print(f"Decoded payload: {payload}")  # 打印解码后的负载，检查是否包含 email 和 exp
         email: str = payload.get("sub")
         if email is None:
             raise credentials_exception
-    except JWTError as e:
-        print(f"JWT decoding error: {e}")  # 打印错误信息
+    except JWTError:
         raise credentials_exception
 
     user = db.query(User).filter(User.email == email).first()
     if user is None:
-        print(f"User not found with email: {email}")  # 用户未找到时的打印
         raise credentials_exception
 
-    print(f"User found: {user.email}")  # 确保找到用户
     return user

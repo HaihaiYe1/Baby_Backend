@@ -3,6 +3,7 @@ import base64
 import json
 from typing import Dict, Any, Optional, List
 import httpx
+from app.config import settings
 
 
 class VLMService:
@@ -12,7 +13,7 @@ class VLMService:
         self,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
-        model: str = "MiMo-V2.5-Pro"
+        model: Optional[str] = None
     ):
         """
         初始化VLM服务
@@ -22,15 +23,9 @@ class VLMService:
             base_url: API基础URL
             model: 模型名称
         """
-        self.api_key = api_key or os.getenv(
-            "MIMO_API_KEY",
-            "sk-cky9npvg2kk9c2m8iv7n0ycgnxggfqq73nmvt7sdx9efouwj"
-        )
-        self.base_url = base_url or os.getenv(
-            "MIMO_BASE_URL",
-            "https://api.mimo.xiaomi.com/v1"
-        )
-        self.model = model
+        self.api_key = api_key or settings.MIMO_API_KEY
+        self.base_url = base_url or settings.MIMO_BASE_URL
+        self.model = model or settings.MIMO_MODEL
         
         # 验证配置
         if not self.api_key:

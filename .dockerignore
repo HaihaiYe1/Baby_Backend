@@ -1,4 +1,4 @@
-__pycache__/
+__pycache__
 *.pyc
 *.pyo
 *.pyd
@@ -12,5 +12,7 @@ build/
 *.egg
 .env
 *.log
-logs/
-test.db
+.git
+.gitignore
+.pytest_cache
+.mypy_cache

@@ -3,6 +3,7 @@ import json
 import time
 from typing import Dict, Any, Optional, Callable, List
 import paho.mqtt.client as mqtt
+from app.config import settings
 
 
 class MQTTClient:
@@ -11,7 +12,7 @@ class MQTTClient:
     def __init__(
         self,
         broker_host: Optional[str] = None,
-        broker_port: int = 1883,
+        broker_port: Optional[int] = None,
         username: Optional[str] = None,
         password: Optional[str] = None,
         client_id: str = "baby_monitor_agent"
@@ -26,10 +27,10 @@ class MQTTClient:
             password: 密码
             client_id: 客户端ID
         """
-        self.broker_host = broker_host or os.getenv("MQTT_BROKER_HOST", "localhost")
-        self.broker_port = broker_port or int(os.getenv("MQTT_BROKER_PORT", "1883"))
-        self.username = username or os.getenv("MQTT_USERNAME")
-        self.password = password or os.getenv("MQTT_PASSWORD")
+        self.broker_host = broker_host or settings.MQTT_BROKER_HOST
+        self.broker_port = broker_port or settings.MQTT_BROKER_PORT
+        self.username = username or settings.MQTT_USERNAME
+        self.password = password or settings.MQTT_PASSWORD
         self.client_id = client_id
         
         # 初始化MQTT客户端

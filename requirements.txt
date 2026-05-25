@@ -30,3 +30,8 @@ python-docx==1.1.0
 
 # MQTT（阶段四）
 paho-mqtt==1.6.1
+
+# 测试依赖
+pytest==7.4.4
+pytest-asyncio==0.23.3
+httpx==0.26.0

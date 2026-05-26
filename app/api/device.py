@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from app.models import Device, User
@@ -5,30 +6,40 @@ from app.schemas import DeviceCreate, DeviceUpdate
 from app.utils.database import get_db
 from app.utils.security import get_current_user
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
 
 @router.post("/add")
-def add_device(device: DeviceCreate, db: Session = Depends(get_db)):
-    # 添加新设备
+def add_device(
+    device: DeviceCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """添加新设备"""
+    # 使用当前用户的email
     new_device = Device(
-        email=device.email,
+        email=current_user.email,
         name=device.name,
         ip=device.ip,
-        status=device.status
+        status=device.status,
+        rtsp_url=device.ip  # 默认使用ip作为rtsp_url
     )
     db.add(new_device)
     db.commit()
     db.refresh(new_device)
-    return {"message": "Device added successfully"}
+    
+    logger.info(f"用户 {current_user.email} 添加设备: {new_device.name}")
+    return {"message": "Device added successfully", "device_id": new_device.id}
 
 
 @router.get("/list")
 def get_devices(
-        current_user: User = Depends(get_current_user),  # 自动获取当前登录用户
-        db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    # 自动获取当前用户的 email，并查询其设备列表
+    """获取当前用户的设备列表"""
     devices = db.query(Device).filter(Device.email == current_user.email).all()
 
     return [
@@ -45,53 +56,86 @@ def get_devices(
 
 
 @router.get("/get_rtsp_url")
-def get_rtsp_url(email: str, db: Session = Depends(get_db)):
-    # 根据用户 email 获取设备的 RTSP 地址
-    devices = db.query(Device).filter(Device.email == email).all()
+def get_rtsp_url(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """获取当前用户设备的RTSP地址"""
+    devices = db.query(Device).filter(Device.email == current_user.email).all()
     if not devices:
         raise HTTPException(status_code=404, detail="Devices not found")
 
-    # 返回第一个设备的 RTSP 地址（假设一个用户只有一个设备）
     return {"rtspUrl": devices[0].rtsp_url}
 
 
 @router.put("/update")
-def update_device(device_update: DeviceUpdate, db: Session = Depends(get_db)):
-    # 更新设备信息
+def update_device(
+    device_update: DeviceUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """更新设备信息"""
     device = db.query(Device).filter(Device.id == device_update.id).first()
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
+    
+    # 验证设备属于当前用户
+    if device.email != current_user.email:
+        raise HTTPException(status_code=403, detail="Not authorized to update this device")
 
-    # 仅更新非 None 字段，避免字段值被 None 覆盖
-    device.name = device_update.name or device.name
-    device.ip = device_update.ip or device.ip
-    device.status = device_update.status or device.status
-    device.rtsp_url = device_update.rtsp_url or device.rtsp_url
-    device.email = device_update.email  # email 必须传
+    # 仅更新非None字段
+    if device_update.name is not None:
+        device.name = device_update.name
+    if device_update.ip is not None:
+        device.ip = device_update.ip
+    if device_update.status is not None:
+        device.status = device_update.status
+    if device_update.rtsp_url is not None:
+        device.rtsp_url = device_update.rtsp_url
 
     db.commit()
     db.refresh(device)
+    
+    logger.info(f"用户 {current_user.email} 更新设备: {device.id}")
     return {"message": "Device updated successfully"}
 
 
 @router.delete("/delete")
-def delete_device(device_id: int, db: Session = Depends(get_db)):
-    # 删除设备
+def delete_device(
+    device_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """删除设备"""
     device = db.query(Device).filter(Device.id == device_id).first()
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
+    
+    # 验证设备属于当前用户
+    if device.email != current_user.email:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this device")
 
     db.delete(device)
     db.commit()
+    
+    logger.info(f"用户 {current_user.email} 删除设备: {device_id}")
     return {"message": "Device deleted successfully"}
 
 
 @router.get("/{device_id}")
-def get_device(device_id: int, db: Session = Depends(get_db)):
-    # 获取指定设备信息
+def get_device(
+    device_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """获取指定设备信息"""
     device = db.query(Device).filter(Device.id == device_id).first()
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
+    
+    # 验证设备属于当前用户
+    if device.email != current_user.email:
+        raise HTTPException(status_code=403, detail="Not authorized to access this device")
 
     return {
         "id": device.id,

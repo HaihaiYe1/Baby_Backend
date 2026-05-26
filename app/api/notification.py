@@ -1,3 +1,5 @@
+import logging
+import asyncio
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
 from fastapi.responses import JSONResponse
@@ -8,84 +10,79 @@ from app.crud import create_notification
 from app.utils.database import get_db
 from app.api.websocket import send_alert_message
 from app.utils.security import get_current_user
-import asyncio
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-# 获取通知列表，确保中文不乱码
 @router.get("", response_class=JSONResponse)
 def list_notifications(
-        skip: int = Query(0, description="跳过前 N 条记录"),
-        limit: int = Query(20, description="返回的最大记录数"),
-        db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_user)  # ⬅️ 获取当前用户
+    skip: int = Query(0, description="跳过前 N 条记录"),
+    limit: int = Query(20, description="返回的最大记录数"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    # 获取当前用户的通知列表，通过分页参数 `skip` 和 `limit` 来控制返回的数据
-
+    """获取通知列表"""
     try:
         notifications = db.query(Notification).filter(
             Notification.user_id == current_user.id,
             Notification.deleted == False
-        ).order_by(Notification.pinned.desc(), Notification.timestamp.desc()
-                   ).offset(skip).limit(limit).all()
+        ).order_by(
+            Notification.pinned.desc(),
+            Notification.timestamp.desc()
+        ).offset(skip).limit(limit).all()
 
-        # 将通知记录转化为字典格式
         result = [n.to_dict() for n in notifications]
         return JSONResponse(content=jsonable_encoder(result), media_type="application/json")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching notifications: {str(e)}")
+        logger.error(f"获取通知列表失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error fetching notifications")
 
 
-# 创建新通知
 @router.post("")
 async def add_notification(
-        notification: NotificationCreate,
-        db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_user)  # 获取当前用户
+    notification: NotificationCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    # 创建一条新通知并推送给用户
-
+    """创建新通知"""
     try:
         if not notification.message:
             raise HTTPException(status_code=400, detail="Message cannot be empty")
         if notification.level not in ["safe", "warning", "danger"]:
             raise HTTPException(status_code=400, detail="Invalid level")
 
-        # 创建通知时绑定当前用户
         new_notification = create_notification(
             db=db,
             notification_data=notification,
-            user_id=current_user.id  # 将当前用户的 ID 传入
+            user_id=current_user.id
         )
 
-        # ✅ 异步 WebSocket 推送
-        # 获取通知数据
+        # 异步WebSocket推送
         message = f"New alert: {notification.level} - {notification.message}"
-        level = notification.level
-        alert_id = new_notification.id  # 通过数据库生成的 ID 获取通知 ID
+        asyncio.create_task(send_alert_message(notification.level, message, new_notification.id))
 
-        # 异步推送通知
-        asyncio.create_task(send_alert_message(level, message, alert_id))
-
+        logger.info(f"用户 {current_user.email} 创建通知: {new_notification.id}")
         return {
             "message": "Notification created successfully",
             "data": new_notification.to_dict()
         }
-    except HTTPException as e:
-        raise e  # 直接抛出 HTTPException
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error creating notification: {str(e)}")
+        logger.error(f"创建通知失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error creating notification")
 
 
 @router.put("/{notification_id}")
 def update_notification(
-        notification_id: int,
-        updated_data: NotificationUpdate,
-        db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_user)
+    notification_id: int,
+    updated_data: NotificationUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    print(f"🔄 收到更新请求 ID={notification_id}, data={updated_data.dict()}")
+    """更新通知"""
     try:
         notification = db.query(Notification).filter(
             Notification.id == notification_id,
@@ -109,21 +106,24 @@ def update_notification(
 
         db.commit()
         db.refresh(notification)
-        print(f"通知更新后的数据: {notification.to_dict()}")
 
+        logger.info(f"用户 {current_user.email} 更新通知: {notification_id}")
         return {"message": "Notification updated", "data": notification.to_dict()}
 
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error updating notification: {str(e)}")
+        logger.error(f"更新通知失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error updating notification")
 
 
-# 删除单条通知（软删除）
 @router.delete("/{notification_id}")
 def delete_notification(
-        notification_id: int,
-        db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_user)
+    notification_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
+    """删除单条通知（软删除）"""
     try:
         notification = db.query(Notification).filter(
             Notification.id == notification_id,
@@ -135,58 +135,62 @@ def delete_notification(
 
         notification.deleted = True
         db.commit()
+        
+        logger.info(f"用户 {current_user.email} 删除通知: {notification_id}")
         return {"message": "Notification deleted successfully"}
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error deleting notification: {str(e)}")
+        logger.error(f"删除通知失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error deleting notification")
 
 
-# 置顶 / 取消置顶
 @router.post("/{notification_id}/pin")
 def toggle_pin_notification(
-        notification_id: int,
-        db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_user)
+    notification_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
+    """置顶/取消置顶通知"""
     try:
-        print(f"📌 [置顶操作] 接收到请求 - 用户: {current_user.email}, 通知ID: {notification_id}")
-
-        # 查找该通知
         notification = db.query(Notification).filter(
             Notification.id == notification_id,
             Notification.user_id == current_user.id
         ).first()
 
-        # 如果找不到通知，返回404错误
         if not notification:
-            print(f"⚠️ [置顶操作] 找不到通知 ID: {notification_id}，属于用户: {current_user.email}")
             raise HTTPException(status_code=404, detail="Notification not found")
 
-        old_state = notification.pinned
         notification.pinned = not notification.pinned
-        db.commit()  # 提交到数据库
-        db.refresh(notification)  # 刷新状态，确保拿到最新的数据
-        print(f"✅ [置顶操作] 通知 ID: {notification_id} 状态从 {old_state} -> {notification.pinned}")
+        db.commit()
+        db.refresh(notification)
 
+        logger.info(f"用户 {current_user.email} 切换通知置顶: {notification_id} -> {notification.pinned}")
         return {
             "message": "Notification pin state updated",
             "pinned": notification.pinned
         }
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"❌ [置顶操作] 更新置顶状态出错: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error updating pin status: {str(e)}")
+        logger.error(f"更新置顶状态失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error updating pin status")
 
 
-# 清空通知（批量软删除）
 @router.delete("/clear")
 def clear_all_notifications(
-        db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_user)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
+    """清空通知（批量软删除）"""
     try:
-        db.query(Notification).filter(
+        count = db.query(Notification).filter(
             Notification.user_id == current_user.id
         ).update({Notification.deleted: True})
         db.commit()
-        return {"message": "All notifications cleared"}
+        
+        logger.info(f"用户 {current_user.email} 清空通知: {count} 条")
+        return {"message": "All notifications cleared", "count": count}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error clearing notifications: {str(e)}")
+        logger.error(f"清空通知失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error clearing notifications")

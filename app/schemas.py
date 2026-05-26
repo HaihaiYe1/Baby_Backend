@@ -1,87 +1,88 @@
 from typing import Optional
 from datetime import datetime
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, ConfigDict
 
 
-# 用户注册请求
+# ==================== 用户相关 ====================
+
 class UserCreate(BaseModel):
+    """用户注册请求"""
     email: EmailStr
     password: str
-    username: str  # 新增，用于注册时接收用户名
-
-
-# 用户登录请求
-class UserLogin(BaseModel):
-    email: EmailStr
-    password: str
-
-
-class UserLoginSchema(BaseModel):
-    email: str
-    password: str
-
-
-# 错误响应
-class HTTPValidationError(BaseModel):
-    detail: list
-
-
-# 修改用户名
-class UserUpdate(BaseModel):
     username: str
 
 
-# 修改密码请求
-class ChangePasswordRequest(BaseModel):
+class UserLogin(BaseModel):
+    """用户登录请求"""
     email: EmailStr
+    password: str
+
+
+class UserUpdate(BaseModel):
+    """修改用户名请求"""
+    username: str
+
+
+class ChangePasswordRequest(BaseModel):
+    """修改密码请求"""
     old_password: str
     new_password: str
 
 
-# Device相关
+# ==================== 设备相关 ====================
+
 class DeviceCreate(BaseModel):
-    email: EmailStr
+    """创建设备请求"""
     name: str
     ip: str
     status: str = "offline"
 
 
 class DeviceUpdate(BaseModel):
+    """更新设备请求"""
     id: int
-    name: Optional[str] = None  # 允许不传 name
+    name: Optional[str] = None
     ip: Optional[str] = None
     status: Optional[str] = None
     rtsp_url: Optional[str] = None
-    email: EmailStr  # 必须有 email，否则 update_device 里会报错
 
 
-# Notification 相关
+# ==================== 通知相关 ====================
+
 class NotificationBase(BaseModel):
+    """通知基础模型"""
     message: str
-    level: str  # 如 "safe", "warning", "danger"
+    level: str
     pinned: Optional[bool] = False
     deleted: Optional[bool] = False
-    device_id: Optional[int]
+    device_id: Optional[int] = None
 
 
 class NotificationCreate(NotificationBase):
-    message: str
-    level: str
+    """创建通知请求"""
     device_id: int
 
 
 class Notification(NotificationBase):
+    """通知响应模型"""
     id: int
-    user_id: int  # 用于响应
+    user_id: int
     timestamp: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class NotificationUpdate(BaseModel):
-    message: Optional[str]
-    level: Optional[str]
-    pinned: Optional[bool]
-    deleted: Optional[bool]
-    device_id: Optional[int]
+    """更新通知请求"""
+    message: Optional[str] = None
+    level: Optional[str] = None
+    pinned: Optional[bool] = None
+    deleted: Optional[bool] = None
+    device_id: Optional[int] = None
+
+
+# ==================== 其他 ====================
+
+class HTTPValidationError(BaseModel):
+    """错误响应"""
+    detail: list

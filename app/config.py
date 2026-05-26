@@ -12,21 +12,21 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
     
-    # 数据库配置
-    DATABASE_URL: str = "mysql+pymysql://fastapi:171008@localhost/baby"
+    # 数据库配置 - 必须通过环境变量配置
+    DATABASE_URL: str = ""
     DATABASE_HOST: str = "localhost"
     DATABASE_PORT: int = 3306
-    DATABASE_USER: str = "fastapi"
-    DATABASE_PASSWORD: str = "171008"
+    DATABASE_USER: str = ""
+    DATABASE_PASSWORD: str = ""
     DATABASE_NAME: str = "baby"
     
-    # JWT配置
-    SECRET_KEY: str = "your-secret-key-change-in-production"
+    # JWT配置 - 必须通过环境变量配置
+    SECRET_KEY: str = ""
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 10080  # 7天
     
-    # 小米MiMo API配置
-    MIMO_API_KEY: str = "sk-cky9npvg2kk9c2m8iv7n0ycgnxggfqq73nmvt7sdx9efouwj"
+    # 小米MiMo API配置 - 必须通过环境变量配置
+    MIMO_API_KEY: str = ""
     MIMO_BASE_URL: str = "https://api.mimo.xiaomi.com/v1"
     MIMO_MODEL: str = "MiMo-V2.5-Pro"
     
@@ -39,8 +39,8 @@ class Settings(BaseSettings):
     # WebSocket配置
     WS_HEARTBEAT_TIMEOUT: int = 30
     
-    # CORS配置
-    CORS_ORIGINS: list = ["*"]
+    # CORS配置 - 默认只允许本地开发
+    CORS_ORIGINS: list = ["http://localhost:3000", "http://localhost:8080", "http://localhost:5173"]
     
     class Config:
         env_file = ".env"
@@ -56,3 +56,20 @@ def get_settings() -> Settings:
 
 # 全局配置实例
 settings = get_settings()
+
+# 启动时验证必需的配置
+def validate_settings():
+    """验证必需的配置是否已设置"""
+    errors = []
+    
+    if not settings.SECRET_KEY:
+        errors.append("SECRET_KEY 未设置，请在 .env 文件中配置")
+    
+    if not settings.DATABASE_URL and not settings.DATABASE_USER:
+        errors.append("DATABASE_URL 或 DATABASE_USER 未设置，请在 .env 文件中配置")
+    
+    if not settings.MIMO_API_KEY:
+        errors.append("MIMO_API_KEY 未设置，请在 .env 文件中配置")
+    
+    if errors:
+        raise ValueError("配置错误:\n" + "\n".join(f"  - {e}" for e in errors))

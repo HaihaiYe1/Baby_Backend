@@ -1,29 +1,17 @@
-
-# 测试用
-DESCRIBE notifications;
--- 或者
-SHOW COLUMNS FROM notifications;
-
-SELECT id, user_id, pinned FROM notifications WHERE id = 11;
+-- Baby Monitor 数据库初始化脚本
 
 USE baby;
-SHOW TABLES;
 
-CREATE TABLE users (
+-- 创建users表
+CREATE TABLE IF NOT EXISTS users (
     id INT AUTO_INCREMENT PRIMARY KEY,
     email VARCHAR(255) UNIQUE NOT NULL,
     hashed_password VARCHAR(255) NOT NULL,
     username VARCHAR(100) NOT NULL
 );
 
-ALTER TABLE users ADD COLUMN hashed_password VARCHAR(255) NOT NULL;
-ALTER TABLE users
-ADD COLUMN username VARCHAR(255) UNIQUE;
-
-
-# ALTER TABLE users DROP INDEX username;
-
-CREATE TABLE device (
+-- 创建device表
+CREATE TABLE IF NOT EXISTS device (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     rtsp_url TEXT NOT NULL,
@@ -33,20 +21,8 @@ CREATE TABLE device (
     last_active DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
-
-INSERT INTO device (name, email, ip, status, rtsp_url)
-VALUES
-    ('设备', '2@2.com', '192.168.101.52', 'online', 'rtsp://admin:sbh740911@192.168.101.52:554/stream1'),
-    ('设备2', '2@2.com', '192.168.0.2', 'offline', 'rtsp://192.168.0.2:554'),
-    ('设备3', '2@2.com', '192.168.0.3', 'offline', 'rtsp://192.168.0.3:554'),
-    ('设备4', '2@2.com', '192.168.0.4', 'offline', 'rtsp://192.168.0.4:554');
-
-
-SELECT * FROM device WHERE email = '2@2.com';
-
-
-
-CREATE TABLE notifications (
+-- 创建notifications表
+CREATE TABLE IF NOT EXISTS notifications (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT,
     device_id INT,
@@ -60,10 +36,15 @@ CREATE TABLE notifications (
     FOREIGN KEY (device_id) REFERENCES device(id) ON DELETE SET NULL
 );
 
-INSERT INTO notifications (user_id, device_id, level, message, timestamp, pinned, deleted)
-VALUES
-(9, 1, 'safe', '婴儿正在正常活动', NOW(), false, false),
+-- 插入测试数据
+INSERT INTO users (email, hashed_password, username) VALUES
+('test@example.com', '$2b$12$LJ3m4ys3Lz0YBNOBRQz6O.7LHd7Y1g3b3b3b3b3b3b3b3b3b3b3b', 'testuser');
+
+INSERT INTO device (name, email, ip, status, rtsp_url) VALUES
+('设备1', 'test@example.com', '192.168.1.100', 'online', 'rtsp://admin:password@192.168.1.100:554/stream1'),
+('设备2', 'test@example.com', '192.168.1.101', 'offline', 'rtsp://admin:password@192.168.1.101:554/stream1');
+
+INSERT INTO notifications (user_id, device_id, level, message, timestamp, pinned, deleted) VALUES
+(1, 1, 'safe', '婴儿正在正常活动', NOW(), false, false),
 (1, 1, 'warning', '婴儿趴着睡觉时间过长', NOW(), false, false),
-(7, 2, 'danger', '婴儿可能跌倒了', NOW(), false, false),
-(8, 2, 'warning', '婴儿坐起但姿势不稳定', NOW(), true, false),
-(10, 1, 'danger', '检测到危险姿态，请立刻查看！', NOW(), true, false);
+(1, 2, 'danger', '婴儿可能跌倒了', NOW(), false, false);

@@ -25,6 +25,7 @@ class Device(Base):
     ip = Column(String, nullable=False)
     status = Column(String, nullable=False, default="offline")
     email = Column(String, ForeignKey("users.email"))  # 确保外键正确
+    last_active = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     user = relationship("User", back_populates="devices")  # 关联 User
     notifications = relationship("Notification", back_populates="device")  # 关联通知

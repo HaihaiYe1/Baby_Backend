@@ -3,16 +3,22 @@ import pytest
 import asyncio
 from typing import Generator
 
-# 设置测试环境变量 - 必须在导入app之前
-os.environ["DATABASE_URL"] = "sqlite:///./test.db"
-os.environ["DATABASE_HOST"] = "localhost"
-os.environ["DATABASE_PORT"] = "3306"
-os.environ["DATABASE_USER"] = "test"
-os.environ["DATABASE_PASSWORD"] = "test"
-os.environ["DATABASE_NAME"] = "test"
+# 设置测试环境变量
 os.environ["SECRET_KEY"] = "test-secret-key-for-testing-only"
 os.environ["MIMO_API_KEY"] = "test-key"
-os.environ["DEBUG"] = "true"
+os.environ["DEBUG"] = "false"
+
+# 数据库配置 - 尝试MySQL，失败则回退到SQLite
+USE_MYSQL = os.getenv("USE_MYSQL", "false").lower() == "true"
+
+if USE_MYSQL:
+    os.environ["DATABASE_URL"] = "mysql+pymysql://fastapi:171008@localhost/baby"
+    os.environ["DATABASE_USER"] = "fastapi"
+    os.environ["DATABASE_PASSWORD"] = "171008"
+else:
+    os.environ["DATABASE_URL"] = "sqlite:///./test.db"
+    os.environ["DATABASE_USER"] = "test"
+    os.environ["DATABASE_PASSWORD"] = "test"
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -21,8 +27,13 @@ from sqlalchemy.orm import sessionmaker, Session
 from app.utils.database import Base, get_db
 
 # 创建测试数据库引擎
-TEST_DATABASE_URL = "sqlite:///./test.db"
-test_engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
+if USE_MYSQL:
+    TEST_DATABASE_URL = "mysql+pymysql://fastapi:171008@localhost/baby"
+else:
+    TEST_DATABASE_URL = "sqlite:///./test.db"
+
+connect_args = {} if USE_MYSQL else {"check_same_thread": False}
+test_engine = create_engine(TEST_DATABASE_URL, connect_args=connect_args)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
 
 
@@ -46,23 +57,26 @@ def event_loop():
 @pytest.fixture(scope="function")
 def db_session() -> Generator[Session, None, None]:
     """创建测试数据库会话"""
-    Base.metadata.create_all(bind=test_engine)
+    if not USE_MYSQL:
+        Base.metadata.create_all(bind=test_engine)
     session = TestingSessionLocal()
     try:
         yield session
     finally:
         session.close()
-        Base.metadata.drop_all(bind=test_engine)
+        if not USE_MYSQL:
+            Base.metadata.drop_all(bind=test_engine)
 
 
 @pytest.fixture(scope="function")
 def client() -> Generator[TestClient, None, None]:
     """创建测试客户端"""
-    # 在导入app之前覆盖数据库依赖
     from app.main import app
     app.dependency_overrides[get_db] = override_get_db
     
-    Base.metadata.create_all(bind=test_engine)
+    if not USE_MYSQL:
+        Base.metadata.create_all(bind=test_engine)
+    
     with TestClient(app) as c:
         yield c
     

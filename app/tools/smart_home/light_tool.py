@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Type
 from langchain.tools import BaseTool
 from pydantic import BaseModel, Field
 from .mqtt_client import mqtt_client
@@ -14,16 +14,16 @@ class LightInput(BaseModel):
 
 class LightTool(BaseTool):
     """智能灯光控制工具"""
-    name = "smart_light"
-    description = "控制婴儿房灯光，调节亮度和颜色，营造舒适环境"
-    args_schema = LightInput
+    name: str = "smart_light"
+    description: str = "控制婴儿房灯光，调节亮度和颜色，营造舒适环境"
+    args_schema: Type[BaseModel] = LightInput
     
     # MQTT主题
-    TOPIC_COMMAND = "baby/light/command"
-    TOPIC_STATUS = "baby/light/status"
+    TOPIC_COMMAND: str = "baby/light/command"
+    TOPIC_STATUS: str = "baby/light/status"
     
     # 颜色配置
-    COLOR_MAP = {
+    COLOR_MAP: Dict[str, Dict] = {
         "warm": {"r": 255, "g": 180, "b": 100, "name": "暖光"},
         "cool": {"r": 200, "g": 220, "b": 255, "name": "冷光"},
         "night": {"r": 255, "g": 100, "b": 50, "name": "夜灯"},
@@ -31,7 +31,7 @@ class LightTool(BaseTool):
     }
     
     # 模式配置
-    MODE_MAP = {
+    MODE_MAP: Dict[str, Dict] = {
         "normal": {"brightness": 100, "color": "warm", "name": "普通模式"},
         "night": {"brightness": 10, "color": "night", "name": "夜灯模式"},
         "reading": {"brightness": 80, "color": "cool", "name": "阅读模式"},

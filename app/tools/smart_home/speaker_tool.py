@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Type
 from langchain.tools import BaseTool
 from pydantic import BaseModel, Field
 from .mqtt_client import mqtt_client
@@ -14,16 +14,16 @@ class SpeakerInput(BaseModel):
 
 class SpeakerTool(BaseTool):
     """智能音箱控制工具"""
-    name = "smart_speaker"
-    description = "控制智能音箱播放白噪音、摇篮曲等，用于安抚婴儿"
-    args_schema = SpeakerInput
+    name: str = "smart_speaker"
+    description: str = "控制智能音箱播放白噪音、摇篮曲等，用于安抚婴儿"
+    args_schema: Type[BaseModel] = SpeakerInput
     
     # MQTT主题
-    TOPIC_COMMAND = "baby/speaker/command"
-    TOPIC_STATUS = "baby/speaker/status"
+    TOPIC_COMMAND: str = "baby/speaker/command"
+    TOPIC_STATUS: str = "baby/speaker/status"
     
     # 预设内容
-    CONTENT_MAP = {
+    CONTENT_MAP: Dict[str, str] = {
         "whitenoise": "白噪音",
         "lullaby": "摇篮曲",
         "ocean": "海浪声",
@@ -41,7 +41,6 @@ class SpeakerTool(BaseTool):
     ) -> Dict[str, Any]:
         """执行音箱控制"""
         try:
-            # 构建命令
             command = {
                 "action": action,
                 "device_type": "speaker"
@@ -67,7 +66,6 @@ class SpeakerTool(BaseTool):
                     return {"success": False, "error": "播放时长必须大于0"}
                 command["duration"] = duration
             
-            # 发送MQTT命令
             success = mqtt_client.publish(self.TOPIC_COMMAND, command)
             
             if success:

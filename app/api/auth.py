@@ -2,7 +2,7 @@ import logging
 from fastapi import APIRouter, HTTPException, status, Depends
 from sqlalchemy.orm import Session
 from app.models import User
-from app.schemas import UserCreate, UserLoginSchema, UserUpdate, ChangePasswordRequest
+from app.schemas import UserCreate, UserLogin, UserUpdate, ChangePasswordRequest
 from app.crud import create_user, authenticate_user, get_user_by_email
 from app.utils.database import get_db
 from app.utils.security import hash_password, verify_password, create_access_token, get_current_user
@@ -23,7 +23,7 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/login")
-async def login(user: UserLoginSchema, db: Session = Depends(get_db)):
+async def login(user: UserLogin, db: Session = Depends(get_db)):
     """用户登录"""
     stored_user = authenticate_user(db, user.email, user.password)
     if not stored_user:

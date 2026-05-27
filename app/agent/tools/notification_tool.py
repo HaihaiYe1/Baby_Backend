@@ -1,11 +1,14 @@
-from typing import Dict, Any, Optional
-from langchain.tools import BaseTool
+import logging
+from typing import Dict, Any, Optional, Type
+from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from app.crud import create_notification
 from app.schemas import NotificationCreate
 from app.api.websocket import send_alert_message
 import asyncio
+
+logger = logging.getLogger(__name__)
 
 
 class NotificationInput(BaseModel):
@@ -18,12 +21,14 @@ class NotificationInput(BaseModel):
 
 class NotificationTool(BaseTool):
     """通知工具，用于发送报警通知"""
-    name = "send_notification"
-    description = "向用户发送报警通知，支持WebSocket实时推送"
-    args_schema = NotificationInput
+    name: str = "send_notification"
+    description: str = "向用户发送报警通知，支持WebSocket实时推送"
+    args_schema: Type[BaseModel] = NotificationInput
     
-    def __init__(self, db: Session):
-        super().__init__()
+    _db: Any = None
+    
+    def __init__(self, db: Session, **kwargs):
+        super().__init__(**kwargs)
         self._db = db
     
     def _run(
@@ -69,7 +74,7 @@ class NotificationTool(BaseTool):
                         )
                     )
             except Exception as ws_error:
-                print(f"WebSocket推送失败: {ws_error}")
+                logger.warning(f"WebSocket推送失败: {ws_error}")
             
             return {
                 "success": True,
@@ -79,6 +84,7 @@ class NotificationTool(BaseTool):
             }
             
         except Exception as e:
+            logger.error(f"发送通知失败: {e}", exc_info=True)
             return {"success": False, "error": f"发送通知失败: {str(e)}"}
     
     async def _arun(

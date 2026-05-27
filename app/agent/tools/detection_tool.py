@@ -1,7 +1,6 @@
-from typing import Dict, Any, Optional
-from langchain.tools import BaseTool
+from typing import Dict, Any, Optional, Type
+from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
-from app.detection.multi_detector import MultiDetector
 import cv2
 import numpy as np
 
@@ -17,12 +16,15 @@ class DetectionInput(BaseModel):
 
 class DetectionTool(BaseTool):
     """视频检测工具，封装YOLOv8和MediaPipe检测"""
-    name = "video_detection"
-    description = "分析视频帧，检测婴儿周围的危险物品、窒息风险和异常姿态"
-    args_schema = DetectionInput
+    name: str = "video_detection"
+    description: str = "分析视频帧，检测婴儿周围的危险物品、窒息风险和异常姿态"
+    args_schema: Type[BaseModel] = DetectionInput
     
-    def __init__(self):
-        super().__init__()
+    _detector: Any = None
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        from app.detection.multi_detector import MultiDetector
         self._detector = MultiDetector()
     
     def _run(

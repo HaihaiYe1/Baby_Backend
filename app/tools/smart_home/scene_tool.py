@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Type
 from langchain.tools import BaseTool
 from pydantic import BaseModel, Field
 from .mqtt_client import mqtt_client
@@ -15,22 +15,16 @@ class SceneInput(BaseModel):
 
 class SceneTool(BaseTool):
     """场景模式工具"""
-    name = "smart_scene"
-    description = "控制智能家居场景模式，一键调节多个设备"
-    args_schema = SceneInput
+    name: str = "smart_scene"
+    description: str = "控制智能家居场景模式，一键调节多个设备"
+    args_schema: Type[BaseModel] = SceneInput
     
     # MQTT主题
-    TOPIC_COMMAND = "baby/scene/command"
-    TOPIC_STATUS = "baby/scene/status"
-    
-    def __init__(self):
-        """初始化场景工具"""
-        super().__init__()
-        self.speaker_tool = SpeakerTool()
-        self.light_tool = LightTool()
+    TOPIC_COMMAND: str = "baby/scene/command"
+    TOPIC_STATUS: str = "baby/scene/status"
     
     # 场景配置
-    SCENE_CONFIG = {
+    SCENE_CONFIG: Dict[str, Dict] = {
         "sleep": {
             "name": "睡眠模式",
             "description": "营造安静舒适的睡眠环境",
@@ -73,6 +67,12 @@ class SceneTool(BaseTool):
         }
     }
     
+    def __init__(self, **kwargs):
+        """初始化场景工具"""
+        super().__init__(**kwargs)
+        self._speaker_tool = SpeakerTool()
+        self._light_tool = LightTool()
+    
     def _run(
         self,
         scene: str,
@@ -107,9 +107,9 @@ class SceneTool(BaseTool):
                 
                 # 执行动作
                 if tool_name == "light":
-                    result = self.light_tool._run(action=action_name, **params)
+                    result = self._light_tool._run(action=action_name, **params)
                 elif tool_name == "speaker":
-                    result = self.speaker_tool._run(action=action_name, **params)
+                    result = self._speaker_tool._run(action=action_name, **params)
                 else:
                     result = {"success": False, "error": f"未知工具: {tool_name}"}
                 
@@ -158,11 +158,9 @@ class SceneTool(BaseTool):
         
         adjusted_params = params.copy()
         
-        # 调整音量
         if "volume" in adjusted_params:
             adjusted_params["volume"] = min(100, int(adjusted_params["volume"] * multiplier))
         
-        # 调整亮度
         if "brightness" in adjusted_params:
             adjusted_params["brightness"] = min(100, int(adjusted_params["brightness"] * multiplier))
         

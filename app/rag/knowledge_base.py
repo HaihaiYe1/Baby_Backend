@@ -1,8 +1,9 @@
 import os
+import logging
 from typing import List, Dict, Any, Optional
 import chromadb
-from chromadb.config import Settings
-from chromadb.utils import embedding_functions
+
+logger = logging.getLogger(__name__)
 
 
 class KnowledgeBase:
@@ -26,20 +27,12 @@ class KnowledgeBase:
         # 创建持久化目录
         os.makedirs(persist_directory, exist_ok=True)
         
-        # 初始化ChromaDB客户端
-        self.client = chromadb.Client(Settings(
-            chroma_db_impl="duckdb+parquet",
-            persist_directory=persist_directory,
-            anonymized_telemetry=False
-        ))
-        
-        # 使用默认的嵌入函数
-        self.embedding_function = embedding_functions.DefaultEmbeddingFunction()
+        # 初始化ChromaDB客户端（使用新API）
+        self.client = chromadb.PersistentClient(path=persist_directory)
         
         # 获取或创建集合
         self.collection = self.client.get_or_create_collection(
             name=collection_name,
-            embedding_function=self.embedding_function,
             metadata={"description": "育儿知识库"}
         )
     
@@ -120,7 +113,7 @@ class KnowledgeBase:
             self.collection.delete(ids=[doc_id])
             return True
         except Exception as e:
-            print(f"删除文档失败: {e}")
+            logger.error(f"删除文档失败: {e}", exc_info=True)
             return False
     
     def update_document(
@@ -148,7 +141,7 @@ class KnowledgeBase:
             )
             return True
         except Exception as e:
-            print(f"更新文档失败: {e}")
+            logger.error(f"更新文档失败: {e}", exc_info=True)
             return False
     
     def get_collection_stats(self) -> Dict[str, Any]:
@@ -210,10 +203,10 @@ class KnowledgeBase:
                 ids = self.add_documents(chunks, metadatas)
                 all_ids.extend(ids)
                 
-                print(f"已添加文件 {file_path}，共 {len(chunks)} 个分块")
+                logger.info(f"已添加文件 {file_path}，共 {len(chunks)} 个分块")
                 
             except Exception as e:
-                print(f"处理文件 {file_path} 失败: {e}")
+                logger.error(f"处理文件 {file_path} 失败: {e}", exc_info=True)
         
         return all_ids
     
@@ -238,8 +231,8 @@ class KnowledgeBase:
         return self.query(query_text, n_results, where)
     
     def persist(self):
-        """持久化数据库"""
-        self.client.persist()
+        """持久化数据库（新版本自动持久化）"""
+        pass
 
 
 # 全局知识库实例

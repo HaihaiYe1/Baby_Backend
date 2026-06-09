@@ -5,7 +5,7 @@ import os
 class EmbeddingManager:
     """嵌入向量管理器"""
     
-    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
+    def __init__(self, model_name: str = "BAAI/bge-small-zh-v1.5"):
         """
         初始化嵌入管理器
         

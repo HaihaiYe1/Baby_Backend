@@ -2,8 +2,17 @@ import os
 import logging
 from typing import List, Dict, Any, Optional
 import chromadb
+from chromadb import EmbeddingFunction, Documents, Embeddings
+from app.rag.embeddings import embedding_manager
 
 logger = logging.getLogger(__name__)
+
+
+class BGEEmbeddingFunction(EmbeddingFunction):
+    """基于BGE模型的ChromaDB嵌入函数"""
+
+    def __call__(self, input: Documents) -> Embeddings:
+        return embedding_manager.embed_texts(input)
 
 
 class KnowledgeBase:
@@ -23,18 +32,30 @@ class KnowledgeBase:
         """
         self.persist_directory = persist_directory
         self.collection_name = collection_name
-        
-        # 创建持久化目录
-        os.makedirs(persist_directory, exist_ok=True)
-        
-        # 初始化ChromaDB客户端（使用新API）
-        self.client = chromadb.PersistentClient(path=persist_directory)
-        
-        # 获取或创建集合
-        self.collection = self.client.get_or_create_collection(
-            name=collection_name,
-            metadata={"description": "育儿知识库"}
-        )
+        self._client = None
+        self._collection = None
+    
+    @property
+    def client(self):
+        """懒加载ChromaDB客户端"""
+        if self._client is None:
+            # 创建持久化目录
+            os.makedirs(self.persist_directory, exist_ok=True)
+            # 初始化ChromaDB客户端
+            self._client = chromadb.PersistentClient(path=self.persist_directory)
+        return self._client
+    
+    @property
+    def collection(self):
+        """懒加载集合"""
+        if self._collection is None:
+            # 获取或创建集合，使用BGE嵌入函数
+            self._collection = self.client.get_or_create_collection(
+                name=self.collection_name,
+                metadata={"description": "育儿知识库"},
+                embedding_function=BGEEmbeddingFunction()
+            )
+        return self._collection
     
     def add_documents(
         self,
@@ -235,5 +256,5 @@ class KnowledgeBase:
         pass
 
 
-# 全局知识库实例
+# 全局知识库实例 - 使用懒加载
 knowledge_base = KnowledgeBase()

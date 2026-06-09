@@ -4,9 +4,27 @@ from app.utils.database import get_db
 from app.utils.security import get_current_user
 from app.models import User
 from app.rag.advisor import parenting_advisor
-from typing import Dict, Any, Optional
+from app.rag.retriever import RAGRetriever
+from app.config import settings
+from typing import Dict, Any, Optional, List
+from pydantic import BaseModel
 
 router = APIRouter()
+
+
+class HybridSearchRequest(BaseModel):
+    """混合检索请求"""
+    query: str
+    top_k: int = 10
+    use_hybrid: bool = True
+    use_reranker: bool = True
+    optimize_query: bool = False
+    category: Optional[str] = None
+
+
+class EvaluateRequest(BaseModel):
+    """评估请求"""
+    test_cases: List[Dict[str, Any]]
 
 
 @router.post("/advice")
@@ -90,14 +108,14 @@ async def search_knowledge(
     current_user: User = Depends(get_current_user)
 ):
     """
-    搜索知识库
+    搜索知识库（稠密向量检索）
     """
     try:
-        from app.rag.retriever import rag_retriever
+        retriever = RAGRetriever(use_hybrid=False, use_reranker=False)
         
-        results = rag_retriever.retrieve(
+        results = await retriever.retrieve(
             query=query,
-            n_results=n_results,
+            top_k=n_results,
             category=category
         )
         
@@ -109,6 +127,41 @@ async def search_knowledge(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"搜索失败: {str(e)}")
+
+
+@router.post("/hybrid-search")
+async def hybrid_search(
+    request: HybridSearchRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    混合检索（BM25 + 向量 + 重排序）
+    """
+    try:
+        retriever = RAGRetriever(
+            use_hybrid=request.use_hybrid,
+            use_reranker=request.use_reranker
+        )
+        
+        results = await retriever.retrieve(
+            query=request.query,
+            top_k=request.top_k,
+            category=request.category,
+            optimize_query=request.optimize_query
+        )
+        
+        return {
+            "success": True,
+            "query": request.query,
+            "optimized": request.optimize_query,
+            "hybrid": request.use_hybrid,
+            "reranked": request.use_reranker,
+            "results": results,
+            "count": len(results)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"混合检索失败: {str(e)}")
 
 
 @router.post("/add-knowledge")
@@ -143,3 +196,48 @@ async def add_knowledge(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"添加知识失败: {str(e)}")
+
+
+@router.post("/evaluate")
+async def evaluate_rag(
+    request: EvaluateRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    评估RAG系统质量
+    """
+    try:
+        from app.rag.evaluator import evaluator
+        
+        results = await evaluator.evaluate(request.test_cases)
+        report = evaluator.generate_report(results)
+        
+        return {
+            "success": True,
+            "results": results,
+            "report": report
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"评估失败: {str(e)}")
+
+
+@router.get("/config")
+async def get_rag_config(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    获取RAG配置
+    """
+    return {
+        "success": True,
+        "config": {
+            "use_bm25": settings.RAG_USE_BM25,
+            "use_rrf": settings.RAG_USE_RRF,
+            "rrf_k": settings.RAG_RRF_K,
+            "use_reranker": settings.RAG_USE_RERANKER,
+            "reranker_model": settings.RAG_RERANKER_MODEL,
+            "top_k": settings.RAG_TOP_K,
+            "rerank_top_k": settings.RAG_RERANK_TOP_K
+        }
+    }

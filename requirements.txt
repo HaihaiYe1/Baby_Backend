@@ -3,9 +3,10 @@ uvicorn>=0.27.0
 sqlalchemy>=2.0.25
 pymysql>=1.1.0
 pydantic>=2.5.3
+pydantic-settings>=2.1.0
 python-jose[cryptography]>=3.3.0
 passlib[bcrypt]>=1.7.4
-bcrypt==4.0.1
+bcrypt>=4.0.0
 python-multipart>=0.0.6
 websockets>=12.0
 opencv-python-headless>=4.9.0.80
@@ -16,16 +17,31 @@ numpy>=1.26.3
 httpx>=0.26.0
 
 # LangChain Agent依赖
-langchain>=0.1.4
-langchain-openai>=0.0.5
-langchain-community>=0.0.16
+langchain>=0.3.0
+langchain-core>=0.3.0
+langchain-openai>=0.2.0
+langchain-community>=0.3.0
 openai>=1.10.0
+
+# LangGraph
+langgraph>=0.2.0
+langgraph-checkpoint>=2.0.0
+langgraph-checkpoint-sqlalchemy>=2.0.0
 
 # 向量数据库
 chromadb>=0.4.22
-sentence-transformers>=2.3.1
+sentence-transformers>=2.6.0
 pypdf2>=3.0.1
 python-docx>=1.1.0
+
+# RAG优化
+rank-bm25>=0.2.2
+ragas>=0.2.0
+jieba>=0.42.1
+
+# MCP支持
+langchain-mcp-adapters>=0.1.0
+fastmcp>=2.0.0
 
 # MQTT
 paho-mqtt>=1.6.1

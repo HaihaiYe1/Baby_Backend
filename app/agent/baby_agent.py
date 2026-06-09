@@ -1,4 +1,4 @@
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 import os
 import json
 from datetime import datetime
@@ -19,6 +19,7 @@ from .prompts import AgentPrompts
 from .memory import ConversationMemory
 from app.rag.advisor import parenting_advisor
 from app.tools.smart_home import SpeakerTool, LightTool, SceneTool
+from app.config import settings
 
 
 class BabyAgent:
@@ -57,8 +58,8 @@ class BabyAgent:
         
         # 初始化LLM（如果使用Agent模式）
         if use_agent_mode:
-            # 小米MiMo API配置
-            api_key = openai_api_key or os.getenv("MIMO_API_KEY", "sk-cky9npvg2kk9c2m8iv7n0ycgnxggfqq73nmvt7sdx9efouwj")
+            # 小米MiMo API配置 - 从环境变量读取
+            api_key = openai_api_key or os.getenv("MIMO_API_KEY")
             base_url = os.getenv("MIMO_BASE_URL", "https://api.mimo.xiaomi.com/v1")
             
             if not api_key:
@@ -283,15 +284,43 @@ class BabyAgentManager:
     """BabyAgent管理器，管理多个用户的Agent实例"""
     
     def __init__(self):
-        self._agents: Dict[int, BabyAgent] = {}
+        self._agents: Dict[int, Union[BabyAgent, Any]] = {}  # BabyAgent or LangGraphBabyAgent
+        self._langgraph_agents: Dict[int, Any] = {}  # LangGraphBabyAgent instances
     
     def get_or_create_agent(
         self,
         db: Session,
         user_id: int,
+        use_langgraph: Optional[bool] = None,
+        **kwargs
+    ) -> Union[BabyAgent, Any]:
+        """
+        获取或创建用户的Agent
+        
+        Args:
+            db: 数据库会话
+            user_id: 用户ID
+            use_langgraph: 是否使用LangGraph（None则从配置读取）
+            **kwargs: 其他参数
+            
+        Returns:
+            BabyAgent或LangGraphBabyAgent实例
+        """
+        if use_langgraph is None:
+            use_langgraph = settings.USE_LANGGRAPH
+        
+        if use_langgraph:
+            return self._get_or_create_langgraph_agent(db, user_id, **kwargs)
+        else:
+            return self._get_or_create_legacy_agent(db, user_id, **kwargs)
+    
+    def _get_or_create_legacy_agent(
+        self,
+        db: Session,
+        user_id: int,
         **kwargs
     ) -> BabyAgent:
-        """获取或创建用户的Agent"""
+        """获取或创建传统Agent"""
         if user_id not in self._agents:
             self._agents[user_id] = BabyAgent(
                 db=db,
@@ -300,17 +329,43 @@ class BabyAgentManager:
             )
         return self._agents[user_id]
     
+    def _get_or_create_langgraph_agent(
+        self,
+        db: Session,
+        user_id: int,
+        **kwargs
+    ) -> Any:
+        """获取或创建LangGraph Agent"""
+        from .langgraph_agent import LangGraphBabyAgent
+        
+        if user_id not in self._langgraph_agents:
+            self._langgraph_agents[user_id] = LangGraphBabyAgent(
+                db=db,
+                user_id=user_id,
+                **kwargs
+            )
+        return self._langgraph_agents[user_id]
+    
     def remove_agent(self, user_id: int) -> None:
         """移除用户的Agent"""
         if user_id in self._agents:
             del self._agents[user_id]
+        if user_id in self._langgraph_agents:
+            del self._langgraph_agents[user_id]
     
     def get_all_agents_status(self) -> Dict[int, Dict[str, Any]]:
         """获取所有Agent的状态"""
-        return {
-            user_id: agent.get_status()
-            for user_id, agent in self._agents.items()
-        }
+        status = {}
+        
+        # 传统Agent状态
+        for user_id, agent in self._agents.items():
+            status[user_id] = agent.get_status()
+        
+        # LangGraph Agent状态
+        for user_id, agent in self._langgraph_agents.items():
+            status[user_id] = agent.get_status()
+        
+        return status
 
 
 # 全局Agent管理器实例

@@ -26,7 +26,7 @@ openai>=1.10.0
 # LangGraph
 langgraph>=0.2.0
 langgraph-checkpoint>=2.0.0
-langgraph-checkpoint-sqlalchemy>=2.0.0
+langgraph-checkpoint-mysql>=2.0.0
 
 # 向量数据库
 chromadb>=0.4.22

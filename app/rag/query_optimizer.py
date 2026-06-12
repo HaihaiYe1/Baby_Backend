@@ -170,5 +170,19 @@ class QueryOptimizer:
             return query.split()[:5]
 
 
-# 全局查询优化器实例
-query_optimizer = QueryOptimizer()
+# 全局查询优化器实例（延迟初始化）
+_query_optimizer: Optional[QueryOptimizer] = None
+
+
+def get_query_optimizer() -> QueryOptimizer:
+    """获取查询优化器实例（延迟初始化）"""
+    global _query_optimizer
+    if _query_optimizer is None:
+        _query_optimizer = QueryOptimizer()
+    return _query_optimizer
+
+
+# 为向后兼容提供的属性
+@property
+def query_optimizer() -> QueryOptimizer:
+    return get_query_optimizer()

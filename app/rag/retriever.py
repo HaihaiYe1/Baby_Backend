@@ -49,8 +49,8 @@ class RAGRetriever:
     def query_optimizer(self):
         """获取查询优化器"""
         if self._query_optimizer is None:
-            from .query_optimizer import query_optimizer
-            self._query_optimizer = query_optimizer
+            from .query_optimizer import get_query_optimizer
+            self._query_optimizer = get_query_optimizer()
         return self._query_optimizer
     
     async def retrieve(

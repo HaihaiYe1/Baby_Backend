@@ -4,17 +4,21 @@ import asyncio
 from typing import Generator
 
 # 设置测试环境变量
-os.environ["SECRET_KEY"] = "test-secret-key-for-testing-only"
-os.environ["MIMO_API_KEY"] = "test-key"
+os.environ["SECRET_KEY"] = os.getenv("SECRET_KEY", "test-secret-key-for-testing-only")
+os.environ["MIMO_API_KEY"] = os.getenv("MIMO_API_KEY", "test-key-for-testing")
 os.environ["DEBUG"] = "false"
 
 # 数据库配置 - 尝试MySQL，失败则回退到SQLite
 USE_MYSQL = os.getenv("USE_MYSQL", "false").lower() == "true"
 
 if USE_MYSQL:
-    os.environ["DATABASE_URL"] = "mysql+pymysql://fastapi:171008@localhost/baby"
-    os.environ["DATABASE_USER"] = "fastapi"
-    os.environ["DATABASE_PASSWORD"] = "171008"
+    # 从环境变量读取数据库配置，如果没有则使用测试默认值
+    db_user = os.getenv("DATABASE_USER", "test_user")
+    db_password = os.getenv("DATABASE_PASSWORD", "test_password")
+    db_host = os.getenv("DATABASE_HOST", "localhost")
+    db_port = os.getenv("DATABASE_PORT", "3306")
+    db_name = os.getenv("DATABASE_NAME", "baby_test")
+    os.environ["DATABASE_URL"] = f"mysql+pymysql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
 else:
     os.environ["DATABASE_URL"] = "sqlite:///./test.db"
     os.environ["DATABASE_USER"] = "test"
@@ -27,10 +31,7 @@ from sqlalchemy.orm import sessionmaker, Session
 from app.utils.database import Base, get_db
 
 # 创建测试数据库引擎
-if USE_MYSQL:
-    TEST_DATABASE_URL = "mysql+pymysql://fastapi:171008@localhost/baby"
-else:
-    TEST_DATABASE_URL = "sqlite:///./test.db"
+TEST_DATABASE_URL = os.environ["DATABASE_URL"]
 
 connect_args = {} if USE_MYSQL else {"check_same_thread": False}
 test_engine = create_engine(TEST_DATABASE_URL, connect_args=connect_args)

@@ -2,8 +2,6 @@ from typing import Dict, Any, Optional, List, Type
 from langchain.tools import BaseTool
 from pydantic import BaseModel, Field
 from .mqtt_client import mqtt_client
-from .speaker_tool import SpeakerTool
-from .light_tool import LightTool
 
 
 class SceneInput(BaseModel):
@@ -67,11 +65,18 @@ class SceneTool(BaseTool):
         }
     }
     
+    class Config:
+        """Pydantic配置"""
+        arbitrary_types_allowed = True
+    
     def __init__(self, **kwargs):
         """初始化场景工具"""
         super().__init__(**kwargs)
-        self._speaker_tool = SpeakerTool()
-        self._light_tool = LightTool()
+        # 使用object.__setattr__绕过Pydantic的限制
+        from .speaker_tool import SpeakerTool
+        from .light_tool import LightTool
+        object.__setattr__(self, '_speaker_tool', SpeakerTool())
+        object.__setattr__(self, '_light_tool', LightTool())
     
     def _run(
         self,

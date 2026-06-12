@@ -1,6 +1,8 @@
+import asyncio
+import logging
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
-from app.utils.database import get_db
+from app.utils.database import get_db, SessionLocal
 from app.models import Device
 from app.detection.multi_detector import MultiDetector
 from app.utils.video_utils import get_video_capture, read_frame
@@ -12,20 +14,23 @@ import cv2
 
 from app.schemas import NotificationCreate
 from app.crud import create_notification
-from app.api.websocket import send_alert_message  # ✅ 新增
-from app.utils.security import get_current_user  # ✅ 引入当前用户依赖
+from app.api.websocket import send_alert_message
+from app.utils.security import get_current_user
 from app.models import User
 from app.agent import BabyAgent
 from app.agent.baby_agent import agent_manager
 from app.services.scene_analyzer import scene_analyzer
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 multi_detector = MultiDetector()
 
-# 冷却时间（秒）
-COOL_DOWN_TIME = 5  # 每5秒内同一通知不重复发送
+# 从配置读取冷却时间
+COOL_DOWN_TIME = int(os.getenv("DETECTION_COOLDOWN_SECONDS", "5"))
 DETECTION_THREADS = {}
 STOP_FLAGS = {}
+_threads_lock = threading.Lock()
 
 
 # 启动持续检测
@@ -35,62 +40,81 @@ def start_detect(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
-    if device_id in DETECTION_THREADS:
-        raise HTTPException(status_code=400, detail="检测已在运行")
+    with _threads_lock:
+        if device_id in DETECTION_THREADS:
+            raise HTTPException(status_code=400, detail="检测已在运行")
 
     device = db.query(Device).filter(Device.id == device_id).first()
     if not device or not device.rtsp_url:
         raise HTTPException(status_code=404, detail="设备不存在或未配置 RTSP 流地址")
 
     stop_flag = threading.Event()
-    STOP_FLAGS[device_id] = stop_flag
+    
+    with _threads_lock:
+        STOP_FLAGS[device_id] = stop_flag
 
     def detection_loop():
-        cap = get_video_capture(device.rtsp_url)
-        notified_messages = {}
+        """检测循环 - 在独立线程中运行"""
+        cap = None
+        db_session = None
+        try:
+            cap = get_video_capture(device.rtsp_url)
+            # 在线程中创建新的数据库会话
+            db_session = SessionLocal()
+            notified_messages = {}
+            
+            # 获取事件循环用于异步调用
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
 
-        while not stop_flag.is_set():
-            frame = read_frame(cap)
-            if frame is None:
-                continue
+            while not stop_flag.is_set():
+                frame = read_frame(cap)
+                if frame is None:
+                    continue
 
-            detection = multi_detector.detect(frame)
+                detection = multi_detector.detect(frame)
 
-            if isinstance(detection, dict):
-                causes = detection.get("causes", [])
-                for cause in causes:
-                    level = cause.get("level")
-                    message = cause.get("reason")
+                if isinstance(detection, dict):
+                    causes = detection.get("causes", [])
+                    for cause in causes:
+                        level = cause.get("level")
+                        message = cause.get("reason")
 
-                    if level in ["warning", "danger"]:
-                        current_time = time.time()
-                        if message not in notified_messages or current_time - notified_messages[
-                            message] >= COOL_DOWN_TIME:
-                            notification_data = NotificationCreate(
-                                device_id=device_id,
-                                level=level,
-                                message=message
-                            )
-                            notification = create_notification(db, notification_data, user_id=current_user.id)
+                        if level in ["warning", "danger"]:
+                            current_time = time.time()
+                            if message not in notified_messages or current_time - notified_messages.get(message, 0) >= COOL_DOWN_TIME:
+                                try:
+                                    notification_data = NotificationCreate(
+                                        device_id=device_id,
+                                        level=level,
+                                        message=message
+                                    )
+                                    notification = create_notification(db_session, notification_data, user_id=current_user.id)
 
-                            try:
-                                import asyncio
-                                asyncio.run(send_alert_message(level=level, message=message, alert_id=notification.id))
-                            except RuntimeError:
-                                loop = asyncio.new_event_loop()
-                                asyncio.set_event_loop(loop)
-                                loop.run_until_complete(
-                                    send_alert_message(level=level, message=message, alert_id=notification.id))
-                                loop.close()
+                                    # 使用事件循环执行异步操作
+                                    loop.run_until_complete(
+                                        send_alert_message(level=level, message=message, alert_id=notification.id)
+                                    )
 
-                            notified_messages[message] = current_time
+                                    notified_messages[message] = current_time
+                                except Exception as e:
+                                    logger.error(f"创建通知失败: {e}")
 
-            time.sleep(0.1)
-
-        cap.release()
+                time.sleep(0.1)
+            
+            loop.close()
+            
+        except Exception as e:
+            logger.error(f"检测循环异常: {e}")
+        finally:
+            if cap is not None:
+                cap.release()
+            if db_session is not None:
+                db_session.close()
 
     t = threading.Thread(target=detection_loop, daemon=True)
-    DETECTION_THREADS[device_id] = t
+    with _threads_lock:
+        DETECTION_THREADS[device_id] = t
     t.start()
 
     return {"message": f"已启动设备 {device.name} 的持续检测"}
@@ -101,14 +125,18 @@ def start_detect(
 def stop_detect(
         device_id: int = Query(..., description="设备 ID"),
 ):
-    if device_id not in DETECTION_THREADS:
-        raise HTTPException(status_code=400, detail="该设备未在检测中")
+    with _threads_lock:
+        if device_id not in DETECTION_THREADS:
+            raise HTTPException(status_code=400, detail="该设备未在检测中")
 
-    STOP_FLAGS[device_id].set()
-    DETECTION_THREADS[device_id].join()
+        STOP_FLAGS[device_id].set()
+        thread = DETECTION_THREADS[device_id]
 
-    del DETECTION_THREADS[device_id]
-    del STOP_FLAGS[device_id]
+    thread.join(timeout=5)
+
+    with _threads_lock:
+        del DETECTION_THREADS[device_id]
+        del STOP_FLAGS[device_id]
 
     return {"message": f"已停止设备 {device_id} 的检测"}
 
@@ -169,7 +197,7 @@ async def agent_detect(
             })
             
             count += 1
-            time.sleep(0.1)
+            await asyncio.sleep(0.1)
     
     finally:
         cap.release()
@@ -308,7 +336,7 @@ async def detect_video_source(
         })
 
         count += 1
-        time.sleep(0.1)
+        await asyncio.sleep(0.1)
 
     cap.release()
 
@@ -403,7 +431,7 @@ async def vlm_detect(
             })
             
             count += 1
-            time.sleep(0.1)
+            await asyncio.sleep(0.1)
     
     finally:
         cap.release()

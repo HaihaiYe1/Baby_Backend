@@ -1,9 +1,12 @@
 from sqlalchemy.orm import Session
+import logging
 
 from app import models, schemas
 from app.models import User, Notification
 from app.utils.security import hash_password, verify_password
 from app.schemas import UserCreate
+
+logger = logging.getLogger(__name__)
 
 
 def get_user_by_email(db: Session, email: str):
@@ -24,8 +27,13 @@ def create_user(db: Session, user: schemas.UserCreate):
         username=user.username
     )
     db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
+    try:
+        db.commit()
+        db.refresh(db_user)
+    except Exception as e:
+        db.rollback()
+        logger.error(f"创建用户失败: {e}")
+        raise
 
     return {
         "id": db_user.id,
@@ -44,25 +52,30 @@ def authenticate_user(db: Session, email: str, password: str):
 
 def create_notification(db: Session, notification_data: schemas.NotificationCreate, user_id: int):
     # 创建通知，当设备检测到危险时
-    # 判断是否为危险或警告状态
+    # 构建通知消息，不修改原始数据
     if notification_data.level == "danger":
-        notification_data.message = f"危险：{notification_data.message}"  # 用检测到的危险原因填充通知内容
+        message = f"危险：{notification_data.message}"
     elif notification_data.level == "warning":
-        notification_data.message = f"警告：{notification_data.message}"
+        message = f"警告：{notification_data.message}"
     else:
-        notification_data.message = f"状态：{notification_data.message}"  # 其他情况（可以扩展）
+        message = f"状态：{notification_data.message}"
 
     notification = models.Notification(
-        user_id=user_id,  # 绑定当前用户
+        user_id=user_id,
         device_id=notification_data.device_id,
         level=notification_data.level,
-        message=notification_data.message,
+        message=message,
         pinned=notification_data.pinned if notification_data.pinned is not None else False,
         deleted=notification_data.deleted if notification_data.deleted is not None else False,
     )
     db.add(notification)
-    db.commit()
-    db.refresh(notification)
+    try:
+        db.commit()
+        db.refresh(notification)
+    except Exception as e:
+        db.rollback()
+        logger.error(f"创建通知失败: {e}")
+        raise
     return notification
 
 

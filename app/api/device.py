@@ -1,7 +1,7 @@
 import logging
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
-from app.models import Device, User
+from app.models import Device, User, Notification
 from app.schemas import DeviceCreate, DeviceUpdate
 from app.utils.database import get_db
 from app.utils.security import get_current_user
@@ -27,8 +27,13 @@ def add_device(
         rtsp_url=device.ip  # 默认使用ip作为rtsp_url
     )
     db.add(new_device)
-    db.commit()
-    db.refresh(new_device)
+    try:
+        db.commit()
+        db.refresh(new_device)
+    except Exception as e:
+        db.rollback()
+        logger.error(f"添加设备失败: {e}")
+        raise HTTPException(status_code=500, detail="添加设备失败")
     
     logger.info(f"用户 {current_user.email} 添加设备: {new_device.name}")
     return {"message": "Device added successfully", "device_id": new_device.id}
@@ -93,8 +98,13 @@ def update_device(
     if device_update.rtsp_url is not None:
         device.rtsp_url = device_update.rtsp_url
 
-    db.commit()
-    db.refresh(device)
+    try:
+        db.commit()
+        db.refresh(device)
+    except Exception as e:
+        db.rollback()
+        logger.error(f"更新设备失败: {e}")
+        raise HTTPException(status_code=500, detail="更新设备失败")
     
     logger.info(f"用户 {current_user.email} 更新设备: {device.id}")
     return {"message": "Device updated successfully"}
@@ -115,8 +125,20 @@ def delete_device(
     if device.email != current_user.email:
         raise HTTPException(status_code=403, detail="Not authorized to delete this device")
 
-    db.delete(device)
-    db.commit()
+    try:
+        # 先删除关联的通知记录
+        deleted_notifications = db.query(Notification).filter(
+            Notification.device_id == device_id
+        ).delete(synchronize_session=False)
+        logger.info(f"删除设备 {device_id} 关联的通知: {deleted_notifications} 条")
+        
+        # 删除设备
+        db.delete(device)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"删除设备失败: {e}")
+        raise HTTPException(status_code=500, detail="删除设备失败")
     
     logger.info(f"用户 {current_user.email} 删除设备: {device_id}")
     return {"message": "Device deleted successfully"}

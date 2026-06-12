@@ -17,7 +17,6 @@ from sqlalchemy.orm import Session
 from .tools import DetectionTool, NotificationTool, DeviceTool
 from .prompts import AgentPrompts
 from .memory import ConversationMemory
-from app.rag.advisor import parenting_advisor
 from app.tools.smart_home import SpeakerTool, LightTool, SceneTool
 from app.config import settings
 
@@ -53,8 +52,8 @@ class BabyAgent:
         # 初始化工具
         self.tools = self._initialize_tools()
         
-        # 初始化育儿顾问
-        self.advisor = parenting_advisor
+        # 初始化育儿顾问（延迟导入）
+        self._advisor = None
         
         # 初始化LLM（如果使用Agent模式）
         if use_agent_mode:
@@ -74,6 +73,14 @@ class BabyAgent:
                     max_tokens=1024
                 )
                 self.agent_executor = self._create_agent_executor()
+    
+    @property
+    def advisor(self):
+        """获取育儿顾问（延迟导入）"""
+        if self._advisor is None:
+            from app.rag.advisor import parenting_advisor
+            self._advisor = parenting_advisor
+        return self._advisor
     
     def _initialize_tools(self) -> List[Any]:
         """初始化Agent工具集"""

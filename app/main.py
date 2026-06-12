@@ -13,9 +13,9 @@ from .utils.logger import setup_logging, request_logger
 
 # 配置日志系统
 setup_logging(
-    log_level="INFO",
-    log_dir="logs",
-    log_file="app.log",
+    log_level=settings.LOG_LEVEL if hasattr(settings, 'LOG_LEVEL') else "INFO",
+    log_dir=settings.LOG_DIR if hasattr(settings, 'LOG_DIR') else "logs",
+    log_file=settings.LOG_FILE if hasattr(settings, 'LOG_FILE') else "app.log",
     enable_console=True,
     enable_file=True
 )
@@ -66,38 +66,83 @@ app = FastAPI(
 )
 
 
+# 不需要记录日志的路径（健康检查、静态资源等）
+SKIP_LOG_PATHS = {"/docs", "/redoc", "/openapi.json", "/favicon.ico"}
+
+
 # 请求日志中间件
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     """记录请求日志"""
+    # 跳过不需要记录的路径
+    if request.url.path in SKIP_LOG_PATHS:
+        return await call_next(request)
+    
     start_time = time.time()
     
+    # 获取客户端信息
     client_ip = request.client.host if request.client else "unknown"
     user_agent = request.headers.get("user-agent", "unknown")
+    
+    # 获取请求体大小
+    content_length = request.headers.get("content-length", 0)
+    
+    # 获取查询参数
+    query_params = str(request.query_params) if request.query_params else ""
+    
+    # 尝试获取用户信息（从token）
+    user_info = ""
+    auth_header = request.headers.get("authorization", "")
+    if auth_header and auth_header.startswith("Bearer "):
+        try:
+            from app.utils.security import get_current_user
+            from app.utils.database import SessionLocal
+            from jose import jwt
+            from app.config import settings
+            
+            token = auth_header.split(" ")[1]
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+            email = payload.get("sub")
+            if email:
+                user_info = f" | User: {email}"
+        except Exception:
+            pass  # token无效或过期，忽略
     
     try:
         response = await call_next(request)
         duration = time.time() - start_time
         
-        request_logger.log_request(
-            method=request.method,
-            path=request.url.path,
-            status_code=response.status_code,
-            duration=duration,
-            client_ip=client_ip,
-            user_agent=user_agent
+        # 构建日志消息
+        log_msg = (
+            f"{request.method} {request.url.path}"
+            f"{'?'+query_params if query_params else ''} "
+            f"| {response.status_code} "
+            f"| {duration:.3f}s "
+            f"| IP: {client_ip}"
+            f"{user_info}"
+            f"| Size: {content_length}B"
         )
+        
+        # 根据状态码选择日志级别
+        if response.status_code >= 500:
+            logger.error(log_msg)
+        elif response.status_code >= 400:
+            logger.warning(log_msg)
+        else:
+            logger.info(log_msg)
         
         return response
         
     except Exception as e:
         duration = time.time() - start_time
         
-        request_logger.log_error(
-            method=request.method,
-            path=request.url.path,
-            error=e,
-            client_ip=client_ip
+        logger.error(
+            f"{request.method} {request.url.path} "
+            f"| ERROR: {str(e)} "
+            f"| IP: {client_ip}"
+            f"{user_info} "
+            f"| Duration: {duration:.3f}s",
+            exc_info=True
         )
         
         return JSONResponse(
@@ -109,7 +154,7 @@ async def log_requests(request: Request, call_next):
 # CORS中间件
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

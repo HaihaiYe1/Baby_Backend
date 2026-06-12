@@ -2,6 +2,7 @@ import logging
 import asyncio
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 from app.models import Notification, User
@@ -35,9 +36,12 @@ def list_notifications(
 
         result = [n.to_dict() for n in notifications]
         return JSONResponse(content=jsonable_encoder(result), media_type="application/json")
+    except SQLAlchemyError as e:
+        logger.error(f"数据库查询通知列表失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="数据库查询失败")
     except Exception as e:
         logger.error(f"获取通知列表失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Error fetching notifications")
+        raise HTTPException(status_code=500, detail="获取通知列表失败")
 
 
 @router.post("")
@@ -70,9 +74,12 @@ async def add_notification(
         }
     except HTTPException:
         raise
+    except SQLAlchemyError as e:
+        logger.error(f"数据库创建通知失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="数据库操作失败")
     except Exception as e:
         logger.error(f"创建通知失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Error creating notification")
+        raise HTTPException(status_code=500, detail="创建通知失败")
 
 
 @router.put("/{notification_id}")
@@ -104,8 +111,13 @@ def update_notification(
         if updated_data.device_id is not None:
             notification.device_id = updated_data.device_id
 
-        db.commit()
-        db.refresh(notification)
+        try:
+            db.commit()
+            db.refresh(notification)
+        except SQLAlchemyError as e:
+            db.rollback()
+            logger.error(f"数据库更新通知失败: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="数据库更新失败")
 
         logger.info(f"用户 {current_user.email} 更新通知: {notification_id}")
         return {"message": "Notification updated", "data": notification.to_dict()}
@@ -114,7 +126,7 @@ def update_notification(
         raise
     except Exception as e:
         logger.error(f"更新通知失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Error updating notification")
+        raise HTTPException(status_code=500, detail="更新通知失败")
 
 
 @router.delete("/{notification_id}")
@@ -134,7 +146,12 @@ def delete_notification(
             raise HTTPException(status_code=404, detail="Notification not found")
 
         notification.deleted = True
-        db.commit()
+        try:
+            db.commit()
+        except SQLAlchemyError as e:
+            db.rollback()
+            logger.error(f"数据库删除通知失败: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="数据库删除失败")
         
         logger.info(f"用户 {current_user.email} 删除通知: {notification_id}")
         return {"message": "Notification deleted successfully"}
@@ -142,7 +159,7 @@ def delete_notification(
         raise
     except Exception as e:
         logger.error(f"删除通知失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Error deleting notification")
+        raise HTTPException(status_code=500, detail="删除通知失败")
 
 
 @router.post("/{notification_id}/pin")
@@ -162,8 +179,13 @@ def toggle_pin_notification(
             raise HTTPException(status_code=404, detail="Notification not found")
 
         notification.pinned = not notification.pinned
-        db.commit()
-        db.refresh(notification)
+        try:
+            db.commit()
+            db.refresh(notification)
+        except SQLAlchemyError as e:
+            db.rollback()
+            logger.error(f"数据库更新置顶状态失败: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="数据库更新失败")
 
         logger.info(f"用户 {current_user.email} 切换通知置顶: {notification_id} -> {notification.pinned}")
         return {
@@ -174,7 +196,7 @@ def toggle_pin_notification(
         raise
     except Exception as e:
         logger.error(f"更新置顶状态失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Error updating pin status")
+        raise HTTPException(status_code=500, detail="更新置顶状态失败")
 
 
 @router.delete("/clear")
@@ -187,10 +209,15 @@ def clear_all_notifications(
         count = db.query(Notification).filter(
             Notification.user_id == current_user.id
         ).update({Notification.deleted: True})
-        db.commit()
+        try:
+            db.commit()
+        except SQLAlchemyError as e:
+            db.rollback()
+            logger.error(f"数据库清空通知失败: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="数据库操作失败")
         
         logger.info(f"用户 {current_user.email} 清空通知: {count} 条")
         return {"message": "All notifications cleared", "count": count}
     except Exception as e:
         logger.error(f"清空通知失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Error clearing notifications")
+        raise HTTPException(status_code=500, detail="清空通知失败")
